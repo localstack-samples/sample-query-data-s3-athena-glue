@@ -8,3 +8,5 @@ volume/
 .idea/
 .vscode/
 __pycache__
+.lstk/lstk.log
+logs.txt

@@ -1,0 +1,8 @@
+# lstk configuration file for this sample.
+# This app needs the "bigdata" image variant, which ships with Athena/Glue's
+# pre-installed big data dependencies (Hive metastore, Spark, etc).
+
+[[containers]]
+type = "aws"
+tag  = "latest-bigdata"
+port = "4566"

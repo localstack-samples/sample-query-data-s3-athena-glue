@@ -121,19 +121,30 @@ class TestAthenaQueries:
 
                 if state == 'SUCCEEDED':
                     results = athena_client.get_query_results(QueryExecutionId=query_execution_id)
-                    if not results['ResultSet']['Rows']:
+                    all_rows = results['ResultSet']['Rows']
+                    if not all_rows:
                         print(f"Query {query_execution_id} returned no rows at all.")
                         return pd.DataFrame()
-                    if len(results['ResultSet']['Rows']) == 1 and \
-                       all(not item.get('VarCharValue', '').strip() for item in results['ResultSet']['Rows'][0]['Data']):
-                        print(f"Query {query_execution_id} returned only an empty header row.")
-                        return pd.DataFrame()
-                    if len(results['ResultSet']['Rows']) <= 1:
-                         print(f"Query {query_execution_id} returned no data rows (only header).")
-                         return pd.DataFrame()
 
                     columns = [col['Label'] for col in results['ResultSet']['ResultSetMetadata']['ColumnInfo']]
-                    rows = [[item.get('VarCharValue', None) for item in row['Data']] for row in results['ResultSet']['Rows'][1:]]
+
+                    # SHOW/DESCRIBE-style utility statements return their data directly with
+                    # no header row, unlike SELECT queries where row 0 is always a header.
+                    is_utility_statement = query.strip().upper().startswith(('SHOW ', 'DESCRIBE '))
+                    if is_utility_statement:
+                        data_rows = all_rows
+                    else:
+                        if len(all_rows) == 1 and \
+                           all(not item.get('VarCharValue', '').strip() for item in all_rows[0]['Data']):
+                            print(f"Query {query_execution_id} returned only an empty header row.")
+                            return pd.DataFrame()
+                        data_rows = all_rows[1:]
+
+                    if not data_rows:
+                        print(f"Query {query_execution_id} returned no data rows (only header).")
+                        return pd.DataFrame()
+
+                    rows = [[item.get('VarCharValue', None) for item in row['Data']] for row in data_rows]
                     return pd.DataFrame(rows, columns=columns)
                 else:
                     query_status_response = athena_client.get_query_execution(QueryExecutionId=query_execution_id)
@@ -277,10 +288,24 @@ class TestAthenaQueries:
         except Exception as e:
             pytest.fail(f"Glue check failed for {self.DATABASE_NAME}.{table_name_param} even after readiness fixture: {str(e)}")
 
-        query = f"SHOW COLUMNS IN {table_name_param}"
+        # SHOW COLUMNS returns no rows against LocalStack's Athena implementation, so
+        # introspect the schema via a SELECT's ResultSetMetadata instead, which is
+        # always populated correctly regardless of how many rows come back.
+        query = f"SELECT * FROM {table_name_param} LIMIT 1"
         try:
-            results_df = self.execute_query_and_get_results(athena_client, query, output_location)
-            assert not results_df.empty, f"No columns found by Athena for table {self.DATABASE_NAME}.{table_name_param}"
-            print(f"Athena SHOW COLUMNS for {self.DATABASE_NAME}.{table_name_param}: {results_df.iloc[:, 0].tolist()}")
+            response = athena_client.start_query_execution(
+                QueryString=query,
+                QueryExecutionContext={'Database': self.DATABASE_NAME},
+                ResultConfiguration={'OutputLocation': output_location}
+            )
+            query_execution_id = response['QueryExecutionId']
+            state = self.wait_for_query_completion(athena_client, query_execution_id)
+            assert state == 'SUCCEEDED', f"Query {query_execution_id} did not succeed: {state}"
+            results = athena_client.get_query_results(QueryExecutionId=query_execution_id)
+            columns = [col['Label'] for col in results['ResultSet']['ResultSetMetadata']['ColumnInfo']]
+            assert columns, f"No columns found by Athena for table {self.DATABASE_NAME}.{table_name_param}"
+            print(f"Athena schema for {self.DATABASE_NAME}.{table_name_param}: {columns}")
+        except AssertionError:
+            raise
         except Exception as e:
-            pytest.fail(f"Athena SHOW COLUMNS for {self.DATABASE_NAME}.{table_name_param} failed: {str(e)}")
+            pytest.fail(f"Athena schema check for {self.DATABASE_NAME}.{table_name_param} failed: {str(e)}")
