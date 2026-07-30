@@ -34,8 +34,8 @@ The following diagram shows the architecture that this sample application builds
 ## Prerequisites
 
 - A valid [LocalStack for AWS license](https://localstack.cloud/pricing). Your license provides a [`LOCALSTACK_AUTH_TOKEN`](https://docs.localstack.cloud/getting-started/auth-token/) to activate LocalStack.
-- [`localstack` CLI](https://docs.localstack.cloud/getting-started/installation/#localstack-cli).
-- [AWS CLI](https://docs.localstack.cloud/user-guide/integrations/aws-cli/) with the [`awslocal` wrapper](https://docs.localstack.cloud/user-guide/integrations/aws-cli/#localstack-aws-cli-awslocal)
+- [`lstk` CLI](https://docs.localstack.cloud/aws/tooling/lstk/).
+- [AWS CLI](https://docs.localstack.cloud/user-guide/integrations/aws-cli/) with the [`lstk aws` proxy](https://docs.localstack.cloud/aws/tooling/lstk/)
 - [`make`](https://www.gnu.org/software/make/) (**optional**, but recommended for running the sample application)
 
 > [!NOTE]
@@ -43,7 +43,7 @@ The following diagram shows the architecture that this sample application builds
 > ```shell
 > docker pull localstack/localstack-pro:latest-bigdata
 > ```
-> Start the container with `IMAGE_NAME=localstack/localstack-pro:latest-bigdata` configuration variable to use the pre-installed dependencies.
+> This repo's `.lstk/config.toml` already configures `lstk start` to use this image variant, so no extra flags are needed.
 
 ## Installation
 
@@ -65,11 +65,10 @@ No additional installation steps are required as the sample uses CloudFormation 
 
 ## Deployment
 
-Start LocalStack with the `LOCALSTACK_AUTH_TOKEN` pre-configured:
+Start LocalStack:
 
 ```shell
-localstack auth set-token <LOCALSTACK_AUTH_TOKEN>
-IMAGE_NAME=localstack/localstack-pro:latest-bigdata localstack start
+lstk start
 ```
 
 To deploy the sample application infrastructure, run the following command:
@@ -83,21 +82,21 @@ Alternatively, you can deploy manually step-by-step.
 ### Create S3 bucket and upload data
 
 ```shell
-awslocal s3 mb s3://covid19-lake
-awslocal s3 cp cloudformation-templates/CovidLakeStack.template.json s3://covid19-lake/cfn/CovidLakeStack.template.json
-awslocal s3 sync ./covid19-lake-data/ s3://covid19-lake/
+lstk aws s3 mb s3://covid19-lake
+lstk aws s3 cp cloudformation-templates/CovidLakeStack.template.json s3://covid19-lake/cfn/CovidLakeStack.template.json
+lstk aws s3 sync ./covid19-lake-data/ s3://covid19-lake/
 ```
 
 ### Deploy CloudFormation stack
 
 ```shell
-awslocal cloudformation create-stack --stack-name covid-lake-stack --template-url https://covid19-lake.s3.us-east-2.amazonaws.com/cfn/CovidLakeStack.template.json
+lstk aws cloudformation create-stack --stack-name covid-lake-stack --template-url https://covid19-lake.s3.us-east-2.amazonaws.com/cfn/CovidLakeStack.template.json
 ```
 
 ### Verify deployment
 
 ```shell
-awslocal cloudformation describe-stacks --stack-name covid-lake-stack | grep StackStatus
+lstk aws cloudformation describe-stacks --stack-name covid-lake-stack | grep StackStatus
 ```
 
 Wait for `CREATE_COMPLETE` status before proceeding.

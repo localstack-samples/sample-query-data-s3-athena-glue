@@ -28,16 +28,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install lstk
+        run: |
+          npm install -g @localstack/lstk
+          lstk setup aws
+
       - name: Start LocalStack
-        uses: LocalStack/setup-localstack@main
-        with:
-          image-tag: 'latest'
-          use-pro: 'true'
-          configuration: LS_LOG=trace
-          install-awslocal: 'true'
         env:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
-          IMAGE_NAME: 'localstack/localstack-pro:latest-bigdata'
+        run: |
+          lstk start
 
       - name: Deploy on CloudFormation
         run: |
@@ -50,7 +50,7 @@ jobs:
       - name: Show LocalStack logs
         if: always()
         run: |
-          localstack logs
+          lstk logs
 
       - name: Send a Slack notification
         if: failure() || github.event_name != 'pull_request'
